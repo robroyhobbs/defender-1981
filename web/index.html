@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Defender (1981) - Web Emulator</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Defender (1981)</h1>
+            <div class="score-container">
+                <div class="score">Score: <span id="score">0</span></div>
+                <div class="lives">Lives: <span id="lives">3</span></div>
+            </div>
+        </header>
+        
+        <main>
+            <div class="game-container">
+                <canvas id="gameCanvas"></canvas>
+                <div class="controls-overlay">
+                    <div class="controls">
+                        <div class="control-row">
+                            <div class="key">←</div>
+                            <div class="key">→</div>
+                        </div>
+                        <div class="control-row">
+                            <div class="key">↑</div>
+                            <div class="key">↓</div>
+                        </div>
+                        <div class="control-row">
+                            <div class="key">Space</div>
+                            <div class="key">1</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="status" id="status">Loading emulator...</div>
+            <div class="buttons">
+                <button id="startBtn">Start Game</button>
+                <button id="pauseBtn">Pause</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- JSMESS Core -->
+    <script src="js/jsmess.js"></script>
+    <script src="js/defender.js"></script>
+</body>
+</html> 
