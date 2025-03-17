@@ -1,52 +1,59 @@
-# Defender (1981) - Web Version
+# Defender (1981) - 6800 CPU Implementation
 
-This is a web-based version of the classic arcade game Defender, originally released by Williams Electronics in 1981. This version allows you to play the game directly in your web browser.
+A recreation of the classic arcade game Defender for the 6800 CPU, using the vasm assembler.
 
-## Setup Instructions
+## Features
 
-1. Build the ROM files:
-   ```bash
-   make redlabel
-   ```
-   This will create the ROM files in the `redlabel` directory.
+- Original Defender gameplay mechanics
+- Multiple weapon types (Normal, Spread Shot, Laser, Smart Bomb)
+- Power-up system
+- Enemy AI with different types
+- Sound effects
+- Visual effects and animations
+- Game state management (Title, Playing, Paused, Game Over)
 
-2. Copy the ROM files:
-   ```bash
-   cp redlabel/defend.* roms/
-   ```
+## Building
 
-3. Serve the web files:
-   You can use any web server to serve the files. For example, using Python's built-in HTTP server:
-   ```bash
-   python3 -m http.server 8000
-   ```
+1. Install vasm assembler
+2. Run `make` to build the ROM
+3. The output will be `defender.bin`
 
-4. Open your web browser and navigate to:
-   ```
-   http://localhost:8000
-   ```
+## Running
 
-## Controls
+### Local Development
+1. Run `./run_defender.sh` to start the game
+2. Use the web interface at http://localhost:8000
 
-- **Left/Right Arrow Keys**: Move left/right
-- **Up/Down Arrow Keys**: Thrust up/down
-- **Space**: Fire
-- **1**: Start Game
+### Controls
+- Joystick: Move ship
+- Fire Button: Shoot
+- Start Button: Start/Pause game
+- Smart Bomb Button: Deploy smart bomb
+- Hyperspace Button: Enter hyperspace
 
-## Technical Details
+## Project Structure
 
-This web version uses:
-- HTML5 Canvas for rendering
-- WebAssembly for running the MAME emulator core
-- JavaScript for game logic and input handling
+- `src/asm/defender.asm`: Main game code
+- `hardware.asm`: Hardware definitions and constants
+- `player.asm`: Player movement and controls
+- `web/`: Web interface and emulator
+- `orig/`: Original Defender documentation and schematics
 
-## Original Source
+## Development
 
-This web version is based on the original Defender source code, which can be found in the `src` directory. The original source code was written in Motorola 6809 assembly language and was designed to run on the Williams arcade hardware.
+The game is written in 6800 assembly language and uses the vasm assembler. The code is organized into several modules:
+
+- Game state management
+- Player movement and controls
+- Enemy AI and spawning
+- Weapon system
+- Collision detection
+- Visual effects
+- Sound effects
 
 ## License
 
-This project is for educational purposes only. The original Defender game is a trademark of Williams Electronics. Please respect all copyrights and trademarks.
+This project is for educational purposes only. Defender is a trademark of Williams Electronics Games, Inc.
 
 # Defender (1981) by Eugene Jarvis and Sam Dicker
 <img src="https://user-images.githubusercontent.com/58846/125344603-67e64d80-e34f-11eb-90bf-79a6260db9f1.png" height=250><img src="https://user-images.githubusercontent.com/58846/125094574-4aa14d00-e0cb-11eb-9cf9-6dec489585f4.gif" height=250>
