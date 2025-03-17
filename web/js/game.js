@@ -29,6 +29,10 @@ class Game {
         // Terrain setup
         this.terrain = this.generateTerrain();
         
+        // Initialize game state
+        this.gameOver = false;
+        this.paused = false;
+        
         // Initialize player
         this.player = {
             x: this.canvas.width / 2,
@@ -56,8 +60,8 @@ class Game {
         };
         
         // Enemy spawn settings
-        this.lastEnemySpawn = 0;
-        this.enemySpawnInterval = 1000; // Spawn more frequently (every 1 second)
+        this.lastEnemySpawn = Date.now();
+        this.enemySpawnInterval = 1000; // Spawn every second
         this.maxEnemies = {
             landers: 6,
             bombers: 3,
@@ -310,13 +314,13 @@ class Game {
     }
     
     spawnEnemies() {
+        if (this.gameOver || this.paused) return;
+
         const now = Date.now();
         if (now - this.lastEnemySpawn > this.enemySpawnInterval) {
-            // Calculate spawn position relative to the player's viewport
+            // Calculate spawn position relative to the viewport
             const spawnSide = Math.random() < 0.5;
-            const spawnX = spawnSide ? 
-                this.worldOffset + this.canvas.width + 50 : 
-                this.worldOffset - 50;
+            const viewportX = spawnSide ? this.canvas.width + 50 : -50;
             const spawnY = Math.random() * (this.canvas.height - 100);
             
             // Count current enemies
@@ -327,42 +331,45 @@ class Game {
             // Spawn landers if below max
             if (currentLanders < this.maxEnemies.landers && Math.random() < 0.4) {
                 this.enemies.landers.push({
-                    x: spawnX - this.worldOffset,  // Adjust for world offset
+                    x: viewportX,
                     y: spawnY,
                     width: 35,
                     height: 35,
                     speed: 3,
                     type: 'lander',
                     targetHumanoid: null,
-                    direction: spawnSide ? -1 : 1
+                    direction: spawnSide ? -1 : 1,
+                    worldX: this.worldOffset + viewportX
                 });
             }
             
             // Spawn bombers if below max
             if (currentBombers < this.maxEnemies.bombers && Math.random() < 0.3) {
                 this.enemies.bombers.push({
-                    x: spawnX - this.worldOffset,  // Adjust for world offset
+                    x: viewportX,
                     y: spawnY,
                     width: 40,
                     height: 40,
                     speed: 4,
                     type: 'bomber',
                     waveOffset: Math.random() * Math.PI * 2,
-                    direction: spawnSide ? -1 : 1
+                    direction: spawnSide ? -1 : 1,
+                    worldX: this.worldOffset + viewportX
                 });
             }
             
             // Spawn pods if below max
             if (currentPods < this.maxEnemies.pods && Math.random() < 0.2) {
                 this.enemies.pods.push({
-                    x: spawnX - this.worldOffset,  // Adjust for world offset
+                    x: viewportX,
                     y: spawnY,
                     width: 30,
                     height: 30,
                     speed: 2,
                     type: 'pod',
                     health: 2,
-                    direction: spawnSide ? -1 : 1
+                    direction: spawnSide ? -1 : 1,
+                    worldX: this.worldOffset + viewportX
                 });
             }
             
@@ -405,6 +412,8 @@ class Game {
     }
 
     update() {
+        if (this.gameOver || this.paused) return;
+
         this.frameCount++;
         
         // Update player thrust state and sounds
@@ -433,15 +442,11 @@ class Game {
         // Update player position and direction based on movement
         if (this.keys.ArrowLeft) {
             this.player.x -= this.player.speed;
-            if (this.player.direction !== -1) {
-                this.player.direction = -1;
-            }
+            this.player.direction = -1;
         }
         if (this.keys.ArrowRight) {
             this.player.x += this.player.speed;
-            if (this.player.direction !== 1) {
-                this.player.direction = 1;
-            }
+            this.player.direction = 1;
         }
         if (this.keys.ArrowUp) this.player.y -= this.player.speed;
         if (this.keys.ArrowDown) this.player.y += this.player.speed;
@@ -480,121 +485,135 @@ class Game {
         
         // Check collisions
         this.checkCollisions();
-        
-        // Spawn new enemies
-        this.spawnEnemies();
     }
     
     updateEnemies() {
-        // Update Landers with screen wrapping
-        this.enemies.landers.forEach(lander => {
-            if (!lander.targetHumanoid) {
-                // Find closest humanoid that isn't being abducted
-                const availableHumanoids = this.humanoids.filter(h => !h.isBeingAbducted);
-                if (availableHumanoids.length > 0) {
-                    lander.targetHumanoid = availableHumanoids.reduce((closest, humanoid) => {
-                        const distToCurrent = Math.hypot(
-                            (lander.x + this.worldOffset) - humanoid.x,
-                            lander.y - humanoid.y
-                        );
-                        const distToClosest = closest ? Math.hypot(
-                            (lander.x + this.worldOffset) - closest.x,
-                            lander.y - closest.y
-                        ) : Infinity;
-                        return distToCurrent < distToClosest ? humanoid : closest;
-                    }, null);
-                }
-            }
-            
-            if (lander.targetHumanoid) {
-                // Move towards target humanoid more aggressively
-                const targetX = lander.targetHumanoid.x - this.worldOffset;
-                const targetY = lander.targetHumanoid.y - 50;
-                const dx = targetX - lander.x;
-                const dy = targetY - lander.y;
-                const dist = Math.hypot(dx, dy);
+        if (this.gameOver || this.paused) return;
+
+        // Update enemy positions relative to world offset
+        Object.keys(this.enemies).forEach(type => {
+            this.enemies[type].forEach(enemy => {
+                // Update enemy's world position
+                enemy.worldX += enemy.speed * enemy.direction;
+                // Calculate screen position from world position
+                enemy.x = enemy.worldX - this.worldOffset;
                 
-                if (dist < 5) {
-                    lander.targetHumanoid.isBeingAbducted = true;
-                    lander.isAbducting = true;
-                    lander.y -= 1.5;
-                    lander.targetHumanoid.y = lander.y + 50;
-                    
-                    if (lander.y < -50) {
-                        this.humanoids = this.humanoids.filter(h => h !== lander.targetHumanoid);
-                        lander.targetHumanoid = null;
-                        lander.isAbducting = false;
-                    }
-                } else {
-                    const speed = lander.speed * 1.5;
-                    lander.x += (dx / dist) * speed;
-                    lander.y += (dy / dist) * speed;
+                // Screen wrapping
+                if (enemy.x < -100) {
+                    enemy.worldX = this.worldOffset + this.canvas.width + 50;
+                    enemy.x = enemy.worldX - this.worldOffset;
+                } else if (enemy.x > this.canvas.width + 100) {
+                    enemy.worldX = this.worldOffset - 50;
+                    enemy.x = enemy.worldX - this.worldOffset;
                 }
-            } else {
-                // Patrol pattern
-                lander.x += Math.cos(this.frameCount * 0.03) * lander.speed * 1.2;
-                lander.y += Math.sin(this.frameCount * 0.06) * lander.speed * 1.2;
-            }
-            
-            // Screen wrapping for enemies
-            if (lander.x > this.canvas.width) {
-                lander.x = -50;
-            } else if (lander.x < -50) {
-                lander.x = this.canvas.width;
-            }
-            lander.y = Math.max(50, Math.min(this.canvas.height - 100, lander.y));
-        });
-        
-        // Update Bombers with more aggressive movement
-        this.enemies.bombers.forEach(bomber => {
-            bomber.x += bomber.speed * bomber.direction;
-            bomber.y += Math.sin((this.frameCount * 0.05) + bomber.waveOffset) * 3;
-            
-            // Wrap bombers around the screen
-            if (bomber.x > this.canvas.width + 50) {
-                bomber.x = -50;
-            } else if (bomber.x < -50) {
-                bomber.x = this.canvas.width + 50;
-            }
-        });
-        
-        // Update Pods with wrapping
-        this.enemies.pods.forEach(pod => {
-            pod.x += pod.speed * pod.direction;
-            pod.y += Math.sin(this.frameCount * 0.02) * 0.8;
-            
-            if (pod.x > this.canvas.width + 50) {
-                pod.x = -50;
-            } else if (pod.x < -50) {
-                pod.x = this.canvas.width + 50;
-            }
-        });
-        
-        // Update Swarmers with more aggressive behavior
-        this.enemies.swarmers.forEach(swarmer => {
-            // Target player more aggressively
-            const dx = this.player.x - swarmer.x;
-            const dy = this.player.y - swarmer.y;
-            const dist = Math.hypot(dx, dy);
-            
-            if (dist < 200) { // If close to player, chase more aggressively
-                swarmer.angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.5;
-            } else {
-                swarmer.angle += (Math.random() - 0.5) * 0.3;
-            }
-            
-            swarmer.x += Math.cos(swarmer.angle) * swarmer.speed;
-            swarmer.y += Math.sin(swarmer.angle) * swarmer.speed;
-            
-            // Wrap swarmers around the screen
-            if (swarmer.x > this.canvas.width + 20) {
-                swarmer.x = -20;
-            } else if (swarmer.x < -20) {
-                swarmer.x = this.canvas.width + 20;
-            }
-            if (swarmer.y < 0 || swarmer.y > this.canvas.height) {
-                swarmer.angle = -swarmer.angle;
-            }
+                
+                // Vertical movement based on enemy type
+                switch(type) {
+                    case 'landers':
+                        // Find closest humanoid that isn't being abducted
+                        if (!enemy.targetHumanoid) {
+                            const availableHumanoids = this.humanoids.filter(h => !h.isBeingAbducted);
+                            if (availableHumanoids.length > 0) {
+                                enemy.targetHumanoid = availableHumanoids.reduce((closest, humanoid) => {
+                                    const distToCurrent = Math.hypot(
+                                        (enemy.x + this.worldOffset) - humanoid.x,
+                                        enemy.y - humanoid.y
+                                    );
+                                    const distToClosest = closest ? Math.hypot(
+                                        (enemy.x + this.worldOffset) - closest.x,
+                                        enemy.y - closest.y
+                                    ) : Infinity;
+                                    return distToCurrent < distToClosest ? humanoid : closest;
+                                }, null);
+                            }
+                        }
+                        
+                        if (enemy.targetHumanoid) {
+                            // Move towards target humanoid more aggressively
+                            const targetX = enemy.targetHumanoid.x - this.worldOffset;
+                            const targetY = enemy.targetHumanoid.y - 50;
+                            const dx = targetX - enemy.x;
+                            const dy = targetY - enemy.y;
+                            const dist = Math.hypot(dx, dy);
+                            
+                            if (dist < 5) {
+                                enemy.targetHumanoid.isBeingAbducted = true;
+                                enemy.isAbducting = true;
+                                enemy.y -= 1.5;
+                                enemy.targetHumanoid.y = enemy.y + 50;
+                                
+                                if (enemy.y < -50) {
+                                    this.humanoids = this.humanoids.filter(h => h !== enemy.targetHumanoid);
+                                    enemy.targetHumanoid = null;
+                                    enemy.isAbducting = false;
+                                }
+                            } else {
+                                const speed = enemy.speed * 1.5;
+                                enemy.x += (dx / dist) * speed;
+                                enemy.y += (dy / dist) * speed;
+                            }
+                        } else {
+                            // Patrol pattern
+                            enemy.x += Math.cos(this.frameCount * 0.03) * enemy.speed * 1.2;
+                            enemy.y += Math.sin(this.frameCount * 0.06) * enemy.speed * 1.2;
+                        }
+                        
+                        // Screen wrapping for enemies
+                        if (enemy.x > this.canvas.width) {
+                            enemy.x = -50;
+                        } else if (enemy.x < -50) {
+                            enemy.x = this.canvas.width;
+                        }
+                        enemy.y = Math.max(50, Math.min(this.canvas.height - 100, enemy.y));
+                        break;
+                    case 'bombers':
+                        enemy.x += enemy.speed * enemy.direction;
+                        enemy.y += Math.sin((this.frameCount * 0.05) + enemy.waveOffset) * 3;
+                        
+                        // Wrap bombers around the screen
+                        if (enemy.x > this.canvas.width + 50) {
+                            enemy.x = -50;
+                        } else if (enemy.x < -50) {
+                            enemy.x = this.canvas.width + 50;
+                        }
+                        break;
+                    case 'pods':
+                        enemy.x += enemy.speed * enemy.direction;
+                        enemy.y += Math.sin(this.frameCount * 0.02) * 0.8;
+                        
+                        if (enemy.x > this.canvas.width + 50) {
+                            enemy.x = -50;
+                        } else if (enemy.x < -50) {
+                            enemy.x = this.canvas.width + 50;
+                        }
+                        break;
+                    case 'swarmers':
+                        // Target player more aggressively
+                        const dx = this.player.x - enemy.x;
+                        const dy = this.player.y - enemy.y;
+                        const dist = Math.hypot(dx, dy);
+                        
+                        if (dist < 200) { // If close to player, chase more aggressively
+                            enemy.angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.5;
+                        } else {
+                            enemy.angle += (Math.random() - 0.5) * 0.3;
+                        }
+                        
+                        enemy.x += Math.cos(enemy.angle) * enemy.speed;
+                        enemy.y += Math.sin(enemy.angle) * enemy.speed;
+                        
+                        // Wrap swarmers around the screen
+                        if (enemy.x > this.canvas.width + 20) {
+                            enemy.x = -20;
+                        } else if (enemy.x < -20) {
+                            enemy.x = this.canvas.width + 20;
+                        }
+                        if (enemy.y < 0 || enemy.y > this.canvas.height) {
+                            enemy.angle = -enemy.angle;
+                        }
+                        break;
+                }
+            });
         });
         
         // Remove enemies that are off screen
@@ -629,7 +648,7 @@ class Game {
                             if (enemy.health <= 0) {
                                 this.enemies[type].splice(enemyIndex, 1);
                                 this.handlePodDestruction(enemy);
-                                this.score += 1000;
+                                this.player.score += 1000;
                             }
                         } else {
                             // If it's a lander and it was abducting, free the humanoid
@@ -640,10 +659,10 @@ class Game {
                             
                             // Remove the enemy
                             this.enemies[type].splice(enemyIndex, 1);
-                            this.score += type === 'swarmer' ? 150 : 100;
+                            this.player.score += type === 'swarmer' ? 150 : 100;
                         }
                         
-                        document.getElementById('score').textContent = `Score: ${this.score}`;
+                        document.getElementById('score').textContent = `Score: ${this.player.score}`;
                         this.soundGenerator.generateSound('explosion');
                         this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                     }
@@ -686,6 +705,18 @@ class Game {
     }
     
     draw() {
+        if (this.gameOver) {
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = '48px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.font = '24px Arial';
+            this.ctx.fillText('Press Space to Restart', this.canvas.width / 2, this.canvas.height / 2 + 50);
+            return;
+        }
+
         // Clear main canvas
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -736,6 +767,21 @@ class Game {
         }
         this.ctx.restore();
         
+        // Draw enemies
+        Object.keys(this.enemies).forEach(type => {
+            this.enemies[type].forEach(enemy => {
+                if (enemy.x >= -50 && enemy.x <= this.canvas.width + 50) {
+                    this.ctx.drawImage(
+                        this.sprites[type],
+                        enemy.x,
+                        enemy.y,
+                        enemy.width,
+                        enemy.height
+                    );
+                }
+            });
+        });
+        
         // Draw bullets with glow effect
         this.ctx.shadowBlur = 10;
         this.ctx.shadowColor = '#f00';
@@ -745,46 +791,18 @@ class Game {
         });
         this.ctx.shadowBlur = 0;
         
-        // Draw enemies with sprites
-        Object.keys(this.enemies).forEach(type => {
-            const sprite = this.sprites[type];
-            if (sprite) {
-                this.enemies[type].forEach(enemy => {
-                    this.ctx.drawImage(sprite, enemy.x, enemy.y, enemy.width, enemy.height);
-                });
-            }
-        });
-        
-        // Draw humanoids with abduction beam effect
-        this.ctx.fillStyle = '#0ff';
-        this.humanoids.forEach(humanoid => {
-            const bobOffset = Math.sin(this.frameCount * 0.1) * 2;
-            this.ctx.fillRect(
-                humanoid.x - this.worldOffset,
-                humanoid.y + bobOffset,
-                humanoid.width,
-                humanoid.height
-            );
-            
-            // Draw abduction beam
-            if (humanoid.isBeingAbducted) {
-                this.ctx.save();
-                this.ctx.strokeStyle = '#ff0';
-                this.ctx.lineWidth = 1;
-                this.ctx.setLineDash([5, 5]);
-                this.ctx.beginPath();
-                this.ctx.moveTo(humanoid.x - this.worldOffset + humanoid.width / 2, humanoid.y);
-                this.ctx.lineTo(humanoid.x - this.worldOffset + humanoid.width / 2, humanoid.y - 50);
-                this.ctx.stroke();
-                this.ctx.setLineDash([]);
-                this.ctx.restore();
-            }
-        });
-        
-        // Draw explosions with glow effects
+        // Draw explosions
         this.drawExplosions();
         
-        // Update radar
+        // Draw HUD
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`Score: ${this.player.score}`, 10, 30);
+        this.ctx.fillText(`Lives: ${this.player.lives}`, 10, 60);
+        this.ctx.fillText(`Smart Bombs: ${this.player.smartBombs}`, 10, 90);
+        
+        // Draw radar
         this.drawRadar();
     }
     
@@ -823,8 +841,11 @@ class Game {
     }
     
     gameLoop() {
-        this.update();
-        this.draw();
+        if (!this.gameOver && !this.paused) {
+            this.update();
+            this.draw();
+            this.spawnEnemies();
+        }
         requestAnimationFrame(() => this.gameLoop());
     }
 
