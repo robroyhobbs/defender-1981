@@ -29,28 +29,25 @@ class Game {
         // Terrain setup
         this.terrain = this.generateTerrain();
         
+        // Initialize player
         this.player = {
-            x: 100,
+            x: this.canvas.width / 2,
             y: this.canvas.height / 2,
-            width: 40,
-            height: 20,
+            width: 50,
+            height: 30,
             speed: 5,
-            direction: 1,
+            direction: 1,  // 1 for right, -1 for left
             bullets: [],
             score: 0,
             lives: 3,
             smartBombs: 3,
-            thrust: 0,
             isThrusting: false
         };
         
         // Setup audio
         this.setupAudio();
         
-        // Humanoids to protect
-        this.humanoids = this.generateHumanoids();
-        
-        // Different types of enemies
+        // Initialize enemies object structure
         this.enemies = {
             landers: [],
             bombers: [],
@@ -60,13 +57,25 @@ class Game {
         
         // Enemy spawn settings
         this.lastEnemySpawn = 0;
-        this.enemySpawnInterval = 2000; // Spawn enemies every 2 seconds
+        this.enemySpawnInterval = 1000; // Spawn more frequently (every 1 second)
         this.maxEnemies = {
             landers: 6,
             bombers: 3,
             pods: 2,
             swarmers: 8
         };
+        
+        // Initialize humanoids
+        this.humanoids = [];
+        for (let i = 0; i < 10; i++) {
+            this.humanoids.push({
+                x: Math.random() * this.worldWidth,
+                y: this.canvas.height - 40,
+                width: 20,
+                height: 30,
+                isBeingAbducted: false
+            });
+        }
         
         this.keys = {
             ArrowLeft: false,
@@ -226,11 +235,6 @@ class Game {
                     this.useSmartBomb();
                 } else if (e.code === 'KeyH') {
                     this.hyperspace();
-                } else if (e.code === 'KeyR') {
-                    // Flip player direction and adjust position for smooth transition
-                    const centerX = this.player.x + this.player.width / 2;
-                    this.player.direction *= -1;
-                    this.player.x = centerX - this.player.width / 2;
                 }
             }
         });
@@ -308,17 +312,22 @@ class Game {
     spawnEnemies() {
         const now = Date.now();
         if (now - this.lastEnemySpawn > this.enemySpawnInterval) {
-            // Spawn enemies on both sides of the screen
+            // Calculate spawn position relative to the player's viewport
             const spawnSide = Math.random() < 0.5;
             const spawnX = spawnSide ? 
                 this.worldOffset + this.canvas.width + 50 : 
                 this.worldOffset - 50;
             const spawnY = Math.random() * (this.canvas.height - 100);
             
-            // Lander - Basic enemy that tries to capture humanoids
-            if (Object.keys(this.enemies.landers).length < this.maxEnemies.landers && Math.random() < 0.4) {
+            // Count current enemies
+            const currentLanders = this.enemies.landers.length;
+            const currentBombers = this.enemies.bombers.length;
+            const currentPods = this.enemies.pods.length;
+            
+            // Spawn landers if below max
+            if (currentLanders < this.maxEnemies.landers && Math.random() < 0.4) {
                 this.enemies.landers.push({
-                    x: spawnX,
+                    x: spawnX - this.worldOffset,  // Adjust for world offset
                     y: spawnY,
                     width: 35,
                     height: 35,
@@ -329,10 +338,10 @@ class Game {
                 });
             }
             
-            // Bomber - Drops mines and moves in a wave pattern
-            if (Object.keys(this.enemies.bombers).length < this.maxEnemies.bombers && Math.random() < 0.3) {
+            // Spawn bombers if below max
+            if (currentBombers < this.maxEnemies.bombers && Math.random() < 0.3) {
                 this.enemies.bombers.push({
-                    x: spawnX,
+                    x: spawnX - this.worldOffset,  // Adjust for world offset
                     y: spawnY,
                     width: 40,
                     height: 40,
@@ -343,10 +352,10 @@ class Game {
                 });
             }
             
-            // Pod - Releases swarmers when destroyed
-            if (Object.keys(this.enemies.pods).length < this.maxEnemies.pods && Math.random() < 0.2) {
+            // Spawn pods if below max
+            if (currentPods < this.maxEnemies.pods && Math.random() < 0.2) {
                 this.enemies.pods.push({
-                    x: spawnX,
+                    x: spawnX - this.worldOffset,  // Adjust for world offset
                     y: spawnY,
                     width: 30,
                     height: 30,
@@ -421,9 +430,19 @@ class Game {
             this.playerFrame = (this.playerFrame + 1) % 2;
         }
         
-        // Update player position
-        if (this.keys.ArrowLeft) this.player.x -= this.player.speed;
-        if (this.keys.ArrowRight) this.player.x += this.player.speed;
+        // Update player position and direction based on movement
+        if (this.keys.ArrowLeft) {
+            this.player.x -= this.player.speed;
+            if (this.player.direction !== -1) {
+                this.player.direction = -1;
+            }
+        }
+        if (this.keys.ArrowRight) {
+            this.player.x += this.player.speed;
+            if (this.player.direction !== 1) {
+                this.player.direction = 1;
+            }
+        }
         if (this.keys.ArrowUp) this.player.y -= this.player.speed;
         if (this.keys.ArrowDown) this.player.y += this.player.speed;
         
@@ -431,7 +450,6 @@ class Game {
         if (this.player.x > this.canvas.width * 0.7) {
             this.worldOffset += this.player.speed;
             this.player.x -= this.player.speed;
-            // Wrap around to the beginning if we reach the end
             if (this.worldOffset >= this.worldWidth) {
                 this.worldOffset = 0;
             }
@@ -439,7 +457,6 @@ class Game {
         } else if (this.player.x < this.canvas.width * 0.3) {
             this.worldOffset -= this.player.speed;
             this.player.x += this.player.speed;
-            // Wrap around to the end if we reach the beginning
             if (this.worldOffset < 0) {
                 this.worldOffset = this.worldWidth - this.canvas.width;
             }
@@ -452,13 +469,11 @@ class Game {
         // Update bullets with wrapping
         this.player.bullets = this.player.bullets.filter(bullet => {
             bullet.x += bullet.speed;
-            // Wrap bullets around the world
             if (bullet.x > this.canvas.width) {
                 bullet.x = 0;
             } else if (bullet.x < 0) {
                 bullet.x = this.canvas.width;
             }
-            // Keep bullets for a certain distance
             bullet.distance = (bullet.distance || 0) + Math.abs(bullet.speed);
             return bullet.distance < this.canvas.width * 2;
         });
@@ -471,7 +486,7 @@ class Game {
     }
     
     updateEnemies() {
-        // Update Landers
+        // Update Landers with screen wrapping
         this.enemies.landers.forEach(lander => {
             if (!lander.targetHumanoid) {
                 // Find closest humanoid that isn't being abducted
@@ -479,11 +494,11 @@ class Game {
                 if (availableHumanoids.length > 0) {
                     lander.targetHumanoid = availableHumanoids.reduce((closest, humanoid) => {
                         const distToCurrent = Math.hypot(
-                            lander.x - humanoid.x,
+                            (lander.x + this.worldOffset) - humanoid.x,
                             lander.y - humanoid.y
                         );
                         const distToClosest = closest ? Math.hypot(
-                            lander.x - closest.x,
+                            (lander.x + this.worldOffset) - closest.x,
                             lander.y - closest.y
                         ) : Infinity;
                         return distToCurrent < distToClosest ? humanoid : closest;
@@ -493,7 +508,7 @@ class Game {
             
             if (lander.targetHumanoid) {
                 // Move towards target humanoid more aggressively
-                const targetX = lander.targetHumanoid.x;
+                const targetX = lander.targetHumanoid.x - this.worldOffset;
                 const targetY = lander.targetHumanoid.y - 50;
                 const dx = targetX - lander.x;
                 const dy = targetY - lander.y;
@@ -502,7 +517,7 @@ class Game {
                 if (dist < 5) {
                     lander.targetHumanoid.isBeingAbducted = true;
                     lander.isAbducting = true;
-                    lander.y -= 1.5; // Faster abduction
+                    lander.y -= 1.5;
                     lander.targetHumanoid.y = lander.y + 50;
                     
                     if (lander.y < -50) {
@@ -511,21 +526,21 @@ class Game {
                         lander.isAbducting = false;
                     }
                 } else {
-                    const speed = lander.speed * 1.5; // More aggressive pursuit
+                    const speed = lander.speed * 1.5;
                     lander.x += (dx / dist) * speed;
                     lander.y += (dy / dist) * speed;
                 }
             } else {
-                // More aggressive patrol pattern
+                // Patrol pattern
                 lander.x += Math.cos(this.frameCount * 0.03) * lander.speed * 1.2;
                 lander.y += Math.sin(this.frameCount * 0.06) * lander.speed * 1.2;
             }
             
-            // Keep lander in bounds and wrap around horizontally
-            if (lander.x > this.canvas.width + 50) {
+            // Screen wrapping for enemies
+            if (lander.x > this.canvas.width) {
                 lander.x = -50;
             } else if (lander.x < -50) {
-                lander.x = this.canvas.width + 50;
+                lander.x = this.canvas.width;
             }
             lander.y = Math.max(50, Math.min(this.canvas.height - 100, lander.y));
         });
